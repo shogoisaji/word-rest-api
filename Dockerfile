@@ -1,8 +1,8 @@
 # Multi-stage build for optimized container size
-FROM rust:1.80-alpine AS builder
+FROM rust:1.83-alpine AS builder
 
 # Install build dependencies
-RUN apk add --no-cache musl-dev pkgconfig openssl-dev
+RUN apk add --no-cache musl-dev pkgconfig openssl-dev openssl-libs-static
 
 # Create app directory
 WORKDIR /app
@@ -25,8 +25,8 @@ RUN cargo build --release
 # Runtime stage
 FROM alpine:latest
 
-# Install runtime dependencies
-RUN apk add --no-cache ca-certificates
+# Install runtime dependencies including OpenSSL for TLS connections
+RUN apk add --no-cache ca-certificates libgcc openssl
 
 # Create app user for security
 RUN addgroup -g 1001 -S appgroup && \

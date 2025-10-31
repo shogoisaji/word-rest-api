@@ -24,7 +24,7 @@ Thumbs.db
 
 # Rust
 target/
-Cargo.lock
+# Cargo.lock is needed for reproducible builds
 
 # Environment files
 .env

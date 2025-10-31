@@ -1,12 +1,13 @@
-# Rust REST API with Axum + Turso + Cloud Run
+# Rust REST API with Axum + PostgreSQL (Neon) + Cloud Run
 
-A high-performance REST API built with Rust, using Axum web framework, Turso (distributed SQLite) database, and deployed on Google Cloud Run.
+A high-performance REST API built with Rust, using Axum web framework, PostgreSQL database hosted on Neon, and deployed on Google Cloud Run.
 
 ## 🚀 Features
 
 - **Fast & Efficient**: Built with Rust and Axum for maximum performance
-- **Distributed Database**: Turso (libSQL) for global edge replication
+- **PostgreSQL Database**: Neon serverless PostgreSQL for scalable data storage
 - **Cloud Native**: Designed for Google Cloud Run with auto-scaling
+- **Connection Pooling**: Efficient database connection management
 - **Structured Logging**: JSON logging with tracing for observability
 - **Error Handling**: Comprehensive error handling with proper HTTP status codes
 - **Health Monitoring**: Built-in health check endpoint
@@ -36,8 +37,8 @@ A high-performance REST API built with Rust, using Axum web framework, Turso (di
 - **Language**: Rust 2021 Edition
 - **Web Framework**: Axum 0.7
 - **Async Runtime**: Tokio
-- **Database**: Turso (distributed SQLite)
-- **Database Driver**: libsql
+- **Database**: PostgreSQL (Neon serverless)
+- **Database Driver**: tokio-postgres + deadpool-postgres
 - **Serialization**: Serde
 - **Logging**: tracing + tracing-subscriber
 - **Error Handling**: thiserror + anyhow
@@ -68,25 +69,34 @@ src/
 ### Prerequisites
 
 - Rust 1.80+ installed
-- Turso CLI installed
+- PostgreSQL database (Neon account recommended)
 - Docker (for containerization)
 - Google Cloud SDK (for deployment)
 
-### 1. Database Setup (Turso)
+### 1. Database Setup (Neon PostgreSQL)
 
 ```bash
-# Install Turso CLI
-curl -sSfL https://get.tur.so/install.sh | bash
+# Option 1: Create database on Neon (recommended)
+# 1. Go to https://neon.tech and create an account
+# 2. Create a new project and database
+# 3. Copy the connection string from the dashboard
+# 4. The connection string format is:
+#    postgresql://username:password@ep-example-123456.us-east-1.aws.neon.tech/neondb?sslmode=require
 
-# Login to Turso
-turso auth login
+# Option 2: Local PostgreSQL setup
+# Install PostgreSQL locally
+brew install postgresql  # macOS
+# or
+sudo apt-get install postgresql postgresql-contrib  # Ubuntu
 
-# Create a new database
-turso db create word-rest-api-db --location nrt
+# Start PostgreSQL service
+brew services start postgresql  # macOS
+# or
+sudo systemctl start postgresql  # Ubuntu
 
-# Get database URL and create auth token
-turso db show word-rest-api-db --url
-turso db tokens create word-rest-api-db
+# Create database and user
+createdb word_rest_api
+createuser -s word_user
 ```
 
 ### 2. Local Development
@@ -99,9 +109,13 @@ cd word-rest-api
 # Copy environment template
 cp .env.example .env
 
-# Edit .env with your Turso credentials
-# TURSO_DATABASE_URL=libsql://word-rest-api-db.turso.io
-# TURSO_AUTH_TOKEN=your-auth-token
+# Edit .env with your PostgreSQL/Neon credentials
+# DATABASE_URL=postgresql://username:password@ep-example-123456.us-east-1.aws.neon.tech/neondb?sslmode=require
+# Or use individual parameters:
+# DATABASE_HOST=ep-example-123456.us-east-1.aws.neon.tech
+# DATABASE_USERNAME=username
+# DATABASE_PASSWORD=password
+# DATABASE_NAME=neondb
 
 # Install dependencies and run
 cargo build
@@ -140,14 +154,42 @@ docker build -t word-rest-api:latest .
 
 # Run the container
 docker run -p 8080:8080 \
-  -e TURSO_DATABASE_URL="your-database-url" \
-  -e TURSO_AUTH_TOKEN="your-auth-token" \
+  -e DATABASE_URL="postgresql://username:password@host:port/database?sslmode=require" \
   word-rest-api:latest
 ```
 
 ## ☁️ Cloud Run Deployment
 
-### Prerequisites
+### 🚀 GitHub Actions (推奨)
+
+このプロジェクトはGitHub Actionsを使った自動デプロイに対応しています。
+
+#### セットアップ
+
+詳細なセットアップ手順は [.github/SETUP.md](.github/SETUP.md) を参照してください。
+
+**クイックスタート:**
+
+1. Google Cloudプロジェクトを作成
+2. サービスアカウントを作成し、キーをダウンロード
+3. GitHubシークレットを設定:
+   - `GCP_PROJECT_ID`: Google CloudプロジェクトID
+   - `GCP_SA_KEY`: サービスアカウントキー（JSON）
+4. コードをpush:
+   ```bash
+   git push origin main  # 本番環境にデプロイ
+   git push origin develop  # ステージング環境にデプロイ
+   ```
+
+#### デプロイワークフロー
+
+- **本番環境**: `main`または`master`ブランチへのpushで自動デプロイ
+- **ステージング環境**: `develop`または`staging`ブランチへのpushで自動デプロイ
+- **手動デプロイ**: GitHub ActionsのUIから手動トリガー可能
+
+### 🔧 手動デプロイ
+
+#### Prerequisites
 
 1. Google Cloud Project with billing enabled
 2. Required APIs enabled:
@@ -155,7 +197,7 @@ docker run -p 8080:8080 \
    - Artifact Registry API
    - Secret Manager API
 
-### 1. Setup Google Cloud
+#### 1. Setup Google Cloud
 
 ```bash
 # Set your project ID
@@ -173,15 +215,14 @@ gcloud artifacts repositories create word-rest-api \
   --location=asia-northeast1
 ```
 
-### 2. Store Secrets
+#### 2. Store Secrets
 
 ```bash
-# Store Turso credentials in Secret Manager
-echo -n "your-database-url" | gcloud secrets create turso-database-url --data-file=-
-echo -n "your-auth-token" | gcloud secrets create turso-auth-token --data-file=-
+# Store PostgreSQL/Neon credentials in Secret Manager
+echo -n "postgresql://username:password@host:port/database?sslmode=require" | gcloud secrets create database-url --data-file=-
 ```
 
-### 3. Deploy to Cloud Run
+#### 3. Deploy to Cloud Run
 
 ```bash
 # Deploy using source-based deployment
@@ -190,7 +231,7 @@ gcloud run deploy word-rest-api \
   --region asia-northeast1 \
   --platform managed \
   --allow-unauthenticated \
-  --set-secrets="TURSO_DATABASE_URL=turso-database-url:latest,TURSO_AUTH_TOKEN=turso-auth-token:latest" \
+  --set-secrets="DATABASE_URL=database-url:latest" \
   --set-env-vars="ENV=production" \
   --memory 512Mi \
   --cpu 1 \
@@ -199,7 +240,7 @@ gcloud run deploy word-rest-api \
   --timeout 300
 ```
 
-### 4. Alternative: Manual Docker Deployment
+#### 4. Alternative: Manual Docker Deployment
 
 ```bash
 # Configure Docker for Artifact Registry
@@ -215,7 +256,7 @@ gcloud run deploy word-rest-api \
   --region asia-northeast1 \
   --platform managed \
   --allow-unauthenticated \
-  --set-secrets="TURSO_DATABASE_URL=turso-database-url:latest,TURSO_AUTH_TOKEN=turso-auth-token:latest" \
+  --set-secrets="DATABASE_URL=database-url:latest" \
   --set-env-vars="ENV=production" \
   --memory 512Mi \
   --cpu 1 \
@@ -230,35 +271,51 @@ gcloud run deploy word-rest-api \
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `PORT` | No | `8080` | HTTP server port |
-| `TURSO_DATABASE_URL` | Yes | - | Turso database connection URL (libsql://word-rest-api-db.turso.io) |
-| `TURSO_AUTH_TOKEN` | Yes | - | Turso authentication token |
+| `DATABASE_URL` | Yes* | - | PostgreSQL connection string (postgresql://user:pass@host:port/db?sslmode=require) |
+| `DATABASE_HOST` | Yes* | `localhost` | PostgreSQL host (alternative to DATABASE_URL) |
+| `DATABASE_PORT` | No | `5432` | PostgreSQL port |
+| `DATABASE_NAME` | Yes* | - | PostgreSQL database name |
+| `DATABASE_USERNAME` | Yes* | - | PostgreSQL username |
+| `DATABASE_PASSWORD` | Yes* | - | PostgreSQL password |
+| `DATABASE_SSL_MODE` | No | `require` | SSL mode (disable, allow, prefer, require, verify-ca, verify-full) |
+| `DATABASE_MAX_CONNECTIONS` | No | `10` | Maximum connections in pool |
+| `DATABASE_CONNECTION_TIMEOUT` | No | `30` | Connection timeout in seconds |
 | `ENV` | No | `local` | Environment (`local`, `production`) |
 | `RUST_LOG` | No | `info` | Logging level (`error`, `warn`, `info`, `debug`, `trace`) |
+
+*Either `DATABASE_URL` OR the individual database parameters are required.
 
 ### Database Schema
 
 The application automatically creates the following tables:
 
 ```sql
+-- Enable UUID extension
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
 -- Users table
-CREATE TABLE users (
-    id TEXT PRIMARY KEY,           -- UUID v4
-    name TEXT NOT NULL,
-    email TEXT UNIQUE NOT NULL,
-    created_at INTEGER NOT NULL,   -- Unix timestamp
-    updated_at INTEGER NOT NULL    -- Unix timestamp
+CREATE TABLE IF NOT EXISTS users (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name VARCHAR(255) NOT NULL,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 -- Posts table
-CREATE TABLE posts (
-    id TEXT PRIMARY KEY,           -- UUID v4
-    user_id TEXT NOT NULL,         -- Foreign key to users.id
-    title TEXT NOT NULL,
-    content TEXT,                  -- Optional content
-    created_at INTEGER NOT NULL,   -- Unix timestamp
-    updated_at INTEGER NOT NULL,   -- Unix timestamp
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+CREATE TABLE IF NOT EXISTS posts (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    title VARCHAR(500) NOT NULL,
+    content TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Indexes for performance
+CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+CREATE INDEX IF NOT EXISTS idx_posts_user_id ON posts(user_id);
+CREATE INDEX IF NOT EXISTS idx_posts_created_at ON posts(created_at DESC);
 ```
 
 ## 📊 API Documentation
@@ -282,8 +339,8 @@ Content-Type: application/json
   "id": "550e8400-e29b-41d4-a716-446655440000",
   "name": "John Doe",
   "email": "john@example.com",
-  "created_at": 1698765432,
-  "updated_at": 1698765432
+  "created_at": "2024-01-15T10:30:00Z",
+  "updated_at": "2024-01-15T10:30:00Z"
 }
 ```
 
@@ -298,8 +355,8 @@ GET /api/users/{id}
   "id": "550e8400-e29b-41d4-a716-446655440000",
   "name": "John Doe",
   "email": "john@example.com",
-  "created_at": 1698765432,
-  "updated_at": 1698765432
+  "created_at": "2024-01-15T10:30:00Z",
+  "updated_at": "2024-01-15T10:30:00Z"
 }
 ```
 
@@ -392,7 +449,8 @@ cargo clippy -- -D warnings
 ## 🔒 Security
 
 - Input validation on all endpoints
-- SQL injection prevention (libsql parameterized queries)
+- SQL injection prevention (PostgreSQL parameterized queries)
+- Connection pooling with secure credential management
 - No sensitive data in error responses
 - HTTPS enforced in production
 - Secrets managed via Google Secret Manager
@@ -444,9 +502,17 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 ### Common Issues
 
 **Database Connection Failed**
-- Verify `TURSO_DATABASE_URL` (should be libsql://word-rest-api-db.turso.io) and `TURSO_AUTH_TOKEN` are correct
-- Check if the Turso database (word-rest-api-db) exists and is accessible
-- Ensure network connectivity to Turso servers
+- Verify `DATABASE_URL` or individual database parameters are correct
+- Check if the PostgreSQL database exists and is accessible
+- Verify SSL mode is appropriate for your database (use `require` for Neon)
+- Ensure network connectivity to the database server
+- Check database credentials and permissions
+
+**Connection Pool Issues**
+- Monitor connection pool metrics in logs
+- Adjust `DATABASE_MAX_CONNECTIONS` if needed
+- Check `DATABASE_CONNECTION_TIMEOUT` settings
+- Verify database server can handle the connection load
 
 **Port Already in Use**
 - Change the `PORT` environment variable
@@ -462,12 +528,55 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 - Consider reducing `max-instances` if needed
 - Check for memory leaks in custom code
 
+### PostgreSQL/Neon Database Regions
+
+Common Neon regions you can choose from:
+- `us-east-1` - US East (N. Virginia)
+- `us-west-2` - US West (Oregon)
+- `eu-central-1` - Europe (Frankfurt)
+- `ap-southeast-1` - Asia Pacific (Singapore)
+
+### Database Connection Troubleshooting
+
+If you encounter database connection issues:
+
+1. **Verify Connection String Format**
+   ```bash
+   # Correct format for Neon:
+   postgresql://username:password@ep-example-123456.us-east-1.aws.neon.tech/neondb?sslmode=require
+   ```
+
+2. **Test Connection Manually**
+   ```bash
+   # Using psql (if installed)
+   psql "postgresql://username:password@host:port/database?sslmode=require"
+   ```
+
+3. **Check SSL Requirements**
+   ```bash
+   # Neon requires SSL, ensure sslmode=require in connection string
+   # For local development, you might use sslmode=disable
+   ```
+
+4. **Verify Database Exists**
+   ```bash
+   # Check that the database name in your connection string exists
+   # Default Neon database is usually 'neondb'
+   ```
+
+5. **Check Network Connectivity**
+   ```bash
+   # Test if you can reach the database host
+   ping ep-example-123456.us-east-1.aws.neon.tech
+   ```
+
 ### Getting Help
 
 - Check the [Issues](https://github.com/your-repo/issues) page
 - Review Cloud Run logs: `gcloud run logs tail word-rest-api --region=asia-northeast1`
 - Enable debug logging: `RUST_LOG=debug`
+- Test database connectivity: Check application startup logs for connection errors
 
 ---
 
-Built with ❤️ using Rust, Axum, and Turso
+Built with ❤️ using Rust, Axum, and PostgreSQL (Neon)

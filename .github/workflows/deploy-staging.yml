@@ -1,0 +1,124 @@
+name: Deploy to Staging
+
+on:
+  push:
+    branches:
+      - develop
+      - staging
+  pull_request:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+env:
+  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  REGION: asia-northeast1
+  SERVICE_NAME: word-rest-api-staging
+
+jobs:
+  deploy-staging:
+    name: Deploy to Staging Environment
+    runs-on: ubuntu-latest
+    
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: |
+          gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev
+
+      - name: Build Docker image
+        run: |
+          docker build \
+            -t ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/word-rest-api/${{ env.SERVICE_NAME }}:${{ github.sha }} \
+            -t ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/word-rest-api/${{ env.SERVICE_NAME }}:staging \
+            .
+
+      - name: Push Docker image to Artifact Registry
+        run: |
+          docker push ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/word-rest-api/${{ env.SERVICE_NAME }}:${{ github.sha }}
+          docker push ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/word-rest-api/${{ env.SERVICE_NAME }}:staging
+
+      - name: Deploy to Cloud Run (Staging)
+        run: |
+          gcloud run deploy ${{ env.SERVICE_NAME }} \
+            --image=${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/word-rest-api/${{ env.SERVICE_NAME }}:${{ github.sha }} \
+            --region=${{ env.REGION }} \
+            --platform=managed \
+            --allow-unauthenticated \
+            --set-secrets="DATABASE_URL=database-url-staging:latest" \
+            --set-env-vars="ENV=staging,RUST_LOG=debug" \
+            --memory=512Mi \
+            --cpu=1 \
+            --max-instances=5 \
+            --min-instances=0 \
+            --timeout=300 \
+            --concurrency=80
+
+      - name: Get Service URL
+        id: get-url
+        run: |
+          SERVICE_URL=$(gcloud run services describe ${{ env.SERVICE_NAME }} \
+            --region=${{ env.REGION }} \
+            --format='value(status.url)')
+          echo "url=$SERVICE_URL" >> $GITHUB_OUTPUT
+          echo "Staging service deployed to: $SERVICE_URL"
+
+      - name: Health Check
+        run: |
+          sleep 10
+          curl -f ${{ steps.get-url.outputs.url }}/health || exit 1
+          echo "✅ Health check passed!"
+
+      - name: Run Integration Tests
+        run: |
+          echo "Running integration tests against staging..."
+          
+          # Test vocabulary endpoints
+          echo "Testing GET /api/vocabulary..."
+          curl -f ${{ steps.get-url.outputs.url }}/api/vocabulary || exit 1
+          
+          # Test creating vocabulary
+          echo "Testing POST /api/vocabulary..."
+          RESPONSE=$(curl -s -X POST ${{ steps.get-url.outputs.url }}/api/vocabulary \
+            -H "Content-Type: application/json" \
+            -d '{"en_word":"test","ja_word":"テスト","en_example":"This is a test.","ja_example":"これはテストです。"}')
+          
+          echo "Response: $RESPONSE"
+          
+          # Extract ID from response
+          ID=$(echo $RESPONSE | grep -o '"id":[0-9]*' | grep -o '[0-9]*')
+          
+          if [ -n "$ID" ]; then
+            echo "Testing GET /api/vocabulary/$ID..."
+            curl -f ${{ steps.get-url.outputs.url }}/api/vocabulary/$ID || exit 1
+          fi
+          
+          echo "✅ Integration tests passed!"
+
+      - name: Comment PR with Staging URL
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `🚀 Staging deployment successful!\n\n**Service URL:** ${{ steps.get-url.outputs.url }}\n\n**Health Check:** ${{ steps.get-url.outputs.url }}/health\n**API Docs:** ${{ steps.get-url.outputs.url }}/api/vocabulary`
+            })

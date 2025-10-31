@@ -1,33 +1,33 @@
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 
 /// Post entity representing a content item created by a user
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Post {
-    pub id: String,
-    pub user_id: String,
+    pub id: Uuid,
+    pub user_id: Uuid,
     pub title: String,
     pub content: Option<String>,
-    pub created_at: i64,
-    pub updated_at: i64,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
 }
 
 /// Request structure for creating a new post
 #[derive(Debug, Deserialize)]
 pub struct CreatePostRequest {
-    pub user_id: String,
+    pub user_id: Uuid,
     pub title: String,
     pub content: Option<String>,
 }
 
 impl Post {
     /// Create a new Post instance with generated ID and timestamps
-    pub fn new(user_id: String, title: String, content: Option<String>) -> Self {
-        let now = Utc::now().timestamp();
+    pub fn new(user_id: Uuid, title: String, content: Option<String>) -> Self {
+        let now = Utc::now();
         
         Post {
-            id: Uuid::new_v4().to_string(),
+            id: Uuid::new_v4(),
             user_id,
             title,
             content,
@@ -46,23 +46,15 @@ impl Post {
             self.content = new_content;
         }
         
-        self.updated_at = Utc::now().timestamp();
+        self.updated_at = Utc::now();
     }
 }
 
 impl CreatePostRequest {
     /// Validate the create post request
     pub fn validate(&self) -> Result<(), String> {
-        // Validate user_id
-        if self.user_id.trim().is_empty() {
-            return Err("User ID cannot be empty".to_string());
-        }
+        // Note: user_id is already validated as UUID by serde deserialization
         
-        // Validate UUID format for user_id
-        if Uuid::parse_str(&self.user_id).is_err() {
-            return Err("User ID must be a valid UUID".to_string());
-        }
-
         // Validate title
         if self.title.trim().is_empty() {
             return Err("Title cannot be empty".to_string());
@@ -89,7 +81,7 @@ impl CreatePostRequest {
             .filter(|c| !c.is_empty());
             
         Post::new(
-            self.user_id.trim().to_string(),
+            self.user_id,
             self.title.trim().to_string(),
             normalized_content,
         )
@@ -120,31 +112,31 @@ mod tests {
 
     #[test]
     fn test_post_creation() {
-        let user_id = Uuid::new_v4().to_string();
+        let user_id = Uuid::new_v4();
         let post = Post::new(
-            user_id.clone(),
+            user_id,
             "Test Title".to_string(),
             Some("Test content".to_string()),
         );
         
-        assert!(!post.id.is_empty());
+        assert_ne!(post.id, Uuid::nil());
         assert_eq!(post.user_id, user_id);
         assert_eq!(post.title, "Test Title");
         assert_eq!(post.content, Some("Test content".to_string()));
-        assert!(post.created_at > 0);
+        assert!(post.created_at <= Utc::now());
         assert_eq!(post.created_at, post.updated_at);
     }
 
     #[test]
     fn test_post_creation_without_content() {
-        let user_id = Uuid::new_v4().to_string();
+        let user_id = Uuid::new_v4();
         let post = Post::new(
-            user_id.clone(),
+            user_id,
             "Test Title".to_string(),
             None,
         );
         
-        assert!(!post.id.is_empty());
+        assert_ne!(post.id, Uuid::nil());
         assert_eq!(post.user_id, user_id);
         assert_eq!(post.title, "Test Title");
         assert_eq!(post.content, None);
@@ -152,7 +144,7 @@ mod tests {
 
     #[test]
     fn test_post_update() {
-        let user_id = Uuid::new_v4().to_string();
+        let user_id = Uuid::new_v4();
         let mut post = Post::new(
             user_id,
             "Original Title".to_string(),
@@ -162,8 +154,8 @@ mod tests {
         let original_created_at = post.created_at;
         let original_updated_at = post.updated_at;
         
-        // Sleep for 1 second to ensure timestamp difference
-        std::thread::sleep(std::time::Duration::from_secs(1));
+        // Sleep for 1 millisecond to ensure timestamp difference
+        std::thread::sleep(std::time::Duration::from_millis(1));
         
         post.update(
             Some("Updated Title".to_string()),
@@ -178,11 +170,11 @@ mod tests {
 
     #[test]
     fn test_create_post_request_validation() {
-        let user_id = Uuid::new_v4().to_string();
+        let user_id = Uuid::new_v4();
         
         // Valid request with content
         let valid_request = CreatePostRequest {
-            user_id: user_id.clone(),
+            user_id,
             title: "Test Title".to_string(),
             content: Some("Test content".to_string()),
         };
@@ -190,31 +182,15 @@ mod tests {
 
         // Valid request without content
         let valid_request_no_content = CreatePostRequest {
-            user_id: user_id.clone(),
+            user_id,
             title: "Test Title".to_string(),
             content: None,
         };
         assert!(valid_request_no_content.validate().is_ok());
 
-        // Empty user_id
-        let invalid_user_id = CreatePostRequest {
-            user_id: "".to_string(),
-            title: "Test Title".to_string(),
-            content: None,
-        };
-        assert!(invalid_user_id.validate().is_err());
-
-        // Invalid UUID format for user_id
-        let invalid_uuid = CreatePostRequest {
-            user_id: "not-a-uuid".to_string(),
-            title: "Test Title".to_string(),
-            content: None,
-        };
-        assert!(invalid_uuid.validate().is_err());
-
         // Empty title
         let invalid_title = CreatePostRequest {
-            user_id: user_id.clone(),
+            user_id,
             title: "".to_string(),
             content: None,
         };
@@ -222,7 +198,7 @@ mod tests {
 
         // Title too long
         let long_title = CreatePostRequest {
-            user_id: user_id.clone(),
+            user_id,
             title: "a".repeat(201),
             content: None,
         };
@@ -239,9 +215,9 @@ mod tests {
 
     #[test]
     fn test_create_post_request_into_post() {
-        let user_id = Uuid::new_v4().to_string();
+        let user_id = Uuid::new_v4();
         let request = CreatePostRequest {
-            user_id: user_id.clone(),
+            user_id,
             title: "  Test Title  ".to_string(),
             content: Some("  Test content  ".to_string()),
         };
@@ -255,9 +231,9 @@ mod tests {
 
     #[test]
     fn test_create_post_request_normalization() {
-        let user_id = Uuid::new_v4().to_string();
+        let user_id = Uuid::new_v4();
         let request = CreatePostRequest {
-            user_id: user_id.clone(),
+            user_id,
             title: "  Test Title  ".to_string(),
             content: Some("   ".to_string()), // Only whitespace
         };
@@ -281,65 +257,65 @@ mod tests {
     #[test]
     fn test_post_serialization() {
         let post = Post {
-            id: "123e4567-e89b-12d3-a456-426614174000".to_string(),
-            user_id: "987fcdeb-51a2-43d1-9f12-345678901234".to_string(),
+            id: Uuid::parse_str("123e4567-e89b-12d3-a456-426614174000").unwrap(),
+            user_id: Uuid::parse_str("987fcdeb-51a2-43d1-9f12-345678901234").unwrap(),
             title: "Test Post".to_string(),
             content: Some("This is test content".to_string()),
-            created_at: 1640995200,
-            updated_at: 1640995200,
+            created_at: DateTime::parse_from_rfc3339("2022-01-01T00:00:00Z").unwrap().with_timezone(&Utc),
+            updated_at: DateTime::parse_from_rfc3339("2022-01-01T00:00:00Z").unwrap().with_timezone(&Utc),
         };
 
         // Test serialization to JSON
         let json = serde_json::to_string(&post).expect("Failed to serialize post");
-        let expected = r#"{"id":"123e4567-e89b-12d3-a456-426614174000","user_id":"987fcdeb-51a2-43d1-9f12-345678901234","title":"Test Post","content":"This is test content","created_at":1640995200,"updated_at":1640995200}"#;
+        let expected = r#"{"id":"123e4567-e89b-12d3-a456-426614174000","user_id":"987fcdeb-51a2-43d1-9f12-345678901234","title":"Test Post","content":"This is test content","created_at":"2022-01-01T00:00:00Z","updated_at":"2022-01-01T00:00:00Z"}"#;
         assert_eq!(json, expected);
     }
 
     #[test]
     fn test_post_serialization_without_content() {
         let post = Post {
-            id: "123e4567-e89b-12d3-a456-426614174000".to_string(),
-            user_id: "987fcdeb-51a2-43d1-9f12-345678901234".to_string(),
+            id: Uuid::parse_str("123e4567-e89b-12d3-a456-426614174000").unwrap(),
+            user_id: Uuid::parse_str("987fcdeb-51a2-43d1-9f12-345678901234").unwrap(),
             title: "Test Post".to_string(),
             content: None,
-            created_at: 1640995200,
-            updated_at: 1640995200,
+            created_at: DateTime::parse_from_rfc3339("2022-01-01T00:00:00Z").unwrap().with_timezone(&Utc),
+            updated_at: DateTime::parse_from_rfc3339("2022-01-01T00:00:00Z").unwrap().with_timezone(&Utc),
         };
 
         // Test serialization to JSON with null content
         let json = serde_json::to_string(&post).expect("Failed to serialize post");
-        let expected = r#"{"id":"123e4567-e89b-12d3-a456-426614174000","user_id":"987fcdeb-51a2-43d1-9f12-345678901234","title":"Test Post","content":null,"created_at":1640995200,"updated_at":1640995200}"#;
+        let expected = r#"{"id":"123e4567-e89b-12d3-a456-426614174000","user_id":"987fcdeb-51a2-43d1-9f12-345678901234","title":"Test Post","content":null,"created_at":"2022-01-01T00:00:00Z","updated_at":"2022-01-01T00:00:00Z"}"#;
         assert_eq!(json, expected);
     }
 
     #[test]
     fn test_post_deserialization() {
-        let json = r#"{"id":"123e4567-e89b-12d3-a456-426614174000","user_id":"987fcdeb-51a2-43d1-9f12-345678901234","title":"Test Post","content":"This is test content","created_at":1640995200,"updated_at":1640995200}"#;
+        let json = r#"{"id":"123e4567-e89b-12d3-a456-426614174000","user_id":"987fcdeb-51a2-43d1-9f12-345678901234","title":"Test Post","content":"This is test content","created_at":"2022-01-01T00:00:00Z","updated_at":"2022-01-01T00:00:00Z"}"#;
         
         // Test deserialization from JSON
         let post: Post = serde_json::from_str(json).expect("Failed to deserialize post");
         
-        assert_eq!(post.id, "123e4567-e89b-12d3-a456-426614174000");
-        assert_eq!(post.user_id, "987fcdeb-51a2-43d1-9f12-345678901234");
+        assert_eq!(post.id, Uuid::parse_str("123e4567-e89b-12d3-a456-426614174000").unwrap());
+        assert_eq!(post.user_id, Uuid::parse_str("987fcdeb-51a2-43d1-9f12-345678901234").unwrap());
         assert_eq!(post.title, "Test Post");
         assert_eq!(post.content, Some("This is test content".to_string()));
-        assert_eq!(post.created_at, 1640995200);
-        assert_eq!(post.updated_at, 1640995200);
+        assert_eq!(post.created_at, DateTime::parse_from_rfc3339("2022-01-01T00:00:00Z").unwrap().with_timezone(&Utc));
+        assert_eq!(post.updated_at, DateTime::parse_from_rfc3339("2022-01-01T00:00:00Z").unwrap().with_timezone(&Utc));
     }
 
     #[test]
     fn test_post_deserialization_without_content() {
-        let json = r#"{"id":"123e4567-e89b-12d3-a456-426614174000","user_id":"987fcdeb-51a2-43d1-9f12-345678901234","title":"Test Post","content":null,"created_at":1640995200,"updated_at":1640995200}"#;
+        let json = r#"{"id":"123e4567-e89b-12d3-a456-426614174000","user_id":"987fcdeb-51a2-43d1-9f12-345678901234","title":"Test Post","content":null,"created_at":"2022-01-01T00:00:00Z","updated_at":"2022-01-01T00:00:00Z"}"#;
         
         // Test deserialization from JSON with null content
         let post: Post = serde_json::from_str(json).expect("Failed to deserialize post");
         
-        assert_eq!(post.id, "123e4567-e89b-12d3-a456-426614174000");
-        assert_eq!(post.user_id, "987fcdeb-51a2-43d1-9f12-345678901234");
+        assert_eq!(post.id, Uuid::parse_str("123e4567-e89b-12d3-a456-426614174000").unwrap());
+        assert_eq!(post.user_id, Uuid::parse_str("987fcdeb-51a2-43d1-9f12-345678901234").unwrap());
         assert_eq!(post.title, "Test Post");
         assert_eq!(post.content, None);
-        assert_eq!(post.created_at, 1640995200);
-        assert_eq!(post.updated_at, 1640995200);
+        assert_eq!(post.created_at, DateTime::parse_from_rfc3339("2022-01-01T00:00:00Z").unwrap().with_timezone(&Utc));
+        assert_eq!(post.updated_at, DateTime::parse_from_rfc3339("2022-01-01T00:00:00Z").unwrap().with_timezone(&Utc));
     }
 
     #[test]
@@ -348,7 +324,7 @@ mod tests {
         let json_with_content = r#"{"user_id":"987fcdeb-51a2-43d1-9f12-345678901234","title":"Test Post","content":"Test content"}"#;
         let request: CreatePostRequest = serde_json::from_str(json_with_content).expect("Failed to deserialize CreatePostRequest");
         
-        assert_eq!(request.user_id, "987fcdeb-51a2-43d1-9f12-345678901234");
+        assert_eq!(request.user_id, Uuid::parse_str("987fcdeb-51a2-43d1-9f12-345678901234").unwrap());
         assert_eq!(request.title, "Test Post");
         assert_eq!(request.content, Some("Test content".to_string()));
 
@@ -356,7 +332,7 @@ mod tests {
         let json_without_content = r#"{"user_id":"987fcdeb-51a2-43d1-9f12-345678901234","title":"Test Post"}"#;
         let request: CreatePostRequest = serde_json::from_str(json_without_content).expect("Failed to deserialize CreatePostRequest");
         
-        assert_eq!(request.user_id, "987fcdeb-51a2-43d1-9f12-345678901234");
+        assert_eq!(request.user_id, Uuid::parse_str("987fcdeb-51a2-43d1-9f12-345678901234").unwrap());
         assert_eq!(request.title, "Test Post");
         assert_eq!(request.content, None);
 
@@ -364,7 +340,7 @@ mod tests {
         let json_null_content = r#"{"user_id":"987fcdeb-51a2-43d1-9f12-345678901234","title":"Test Post","content":null}"#;
         let request: CreatePostRequest = serde_json::from_str(json_null_content).expect("Failed to deserialize CreatePostRequest");
         
-        assert_eq!(request.user_id, "987fcdeb-51a2-43d1-9f12-345678901234");
+        assert_eq!(request.user_id, Uuid::parse_str("987fcdeb-51a2-43d1-9f12-345678901234").unwrap());
         assert_eq!(request.title, "Test Post");
         assert_eq!(request.content, None);
     }

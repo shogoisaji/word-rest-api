@@ -1,4 +1,4 @@
-// Library root for the Rust Turso API
+// Library root for the Rust PostgreSQL API
 
 pub mod config;
 pub mod db;

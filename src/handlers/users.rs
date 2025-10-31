@@ -9,6 +9,7 @@ use axum::{
 };
 use std::sync::Arc;
 use tracing::info;
+use uuid::Uuid;
 
 use crate::{
     db::Database,
@@ -36,11 +37,11 @@ pub async fn create_user(
 /// Requirements: 3.1, 3.2, 3.5
 pub async fn get_user_by_id(
     State(db): State<Arc<Database>>,
-    Path(user_id): Path<String>,
+    Path(user_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, ApiError> {
     info!("Fetching user with id: {}", user_id);
     
-    let user = db.get_user_by_id(&user_id).await?;
+    let user = db.get_user_by_id(&user_id.to_string()).await?;
     
     Ok((StatusCode::OK, Json(user)))
 }
@@ -64,12 +65,12 @@ pub async fn get_all_users(
 /// Requirements: 4.1, 4.2, 4.3, 4.4, 4.5
 pub async fn update_user(
     State(db): State<Arc<Database>>,
-    Path(user_id): Path<String>,
+    Path(user_id): Path<Uuid>,
     Json(request): Json<UpdateUserRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
     info!("Updating user with id: {}", user_id);
     
-    let user = db.update_user(&user_id, request).await?;
+    let user = db.update_user(&user_id.to_string(), request).await?;
     
     info!("Successfully updated user with id: {}", user_id);
     Ok((StatusCode::OK, Json(user)))
@@ -80,11 +81,11 @@ pub async fn update_user(
 /// Requirements: 5.1, 5.2, 5.3, 5.4, 5.5
 pub async fn delete_user(
     State(db): State<Arc<Database>>,
-    Path(user_id): Path<String>,
+    Path(user_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, ApiError> {
     info!("Deleting user with id: {}", user_id);
     
-    db.delete_user(&user_id).await?;
+    db.delete_user(&user_id.to_string()).await?;
     
     info!("Successfully deleted user with id: {} (cascade deleted associated posts)", user_id);
     Ok(StatusCode::NO_CONTENT)

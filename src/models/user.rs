@@ -1,15 +1,15 @@
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 
 /// User entity representing a registered user in the system
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct User {
-    pub id: String,
+    pub id: Uuid,
     pub name: String,
     pub email: String,
-    pub created_at: i64,
-    pub updated_at: i64,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
 }
 
 /// Request structure for creating a new user
@@ -29,10 +29,10 @@ pub struct UpdateUserRequest {
 impl User {
     /// Create a new User instance with generated ID and timestamps
     pub fn new(name: String, email: String) -> Self {
-        let now = Utc::now().timestamp();
+        let now = Utc::now();
         
         User {
-            id: Uuid::new_v4().to_string(),
+            id: Uuid::new_v4(),
             name,
             email,
             created_at: now,
@@ -50,7 +50,7 @@ impl User {
             self.email = new_email;
         }
         
-        self.updated_at = Utc::now().timestamp();
+        self.updated_at = Utc::now();
     }
 }
 
@@ -177,10 +177,10 @@ mod tests {
     fn test_user_creation() {
         let user = User::new("John Doe".to_string(), "john@example.com".to_string());
         
-        assert!(!user.id.is_empty());
+        assert_ne!(user.id, Uuid::nil());
         assert_eq!(user.name, "John Doe");
         assert_eq!(user.email, "john@example.com");
-        assert!(user.created_at > 0);
+        assert!(user.created_at <= Utc::now());
         assert_eq!(user.created_at, user.updated_at);
     }
 
@@ -190,8 +190,8 @@ mod tests {
         let original_created_at = user.created_at;
         let original_updated_at = user.updated_at;
         
-        // Sleep for 1 second to ensure timestamp difference
-        std::thread::sleep(std::time::Duration::from_secs(1));
+        // Sleep for 1 millisecond to ensure timestamp difference
+        std::thread::sleep(std::time::Duration::from_millis(1));
         
         user.update(Some("Jane Doe".to_string()), None);
         
@@ -265,31 +265,31 @@ mod tests {
     #[test]
     fn test_user_serialization() {
         let user = User {
-            id: "123e4567-e89b-12d3-a456-426614174000".to_string(),
+            id: Uuid::parse_str("123e4567-e89b-12d3-a456-426614174000").unwrap(),
             name: "John Doe".to_string(),
             email: "john@example.com".to_string(),
-            created_at: 1640995200,
-            updated_at: 1640995200,
+            created_at: DateTime::parse_from_rfc3339("2022-01-01T00:00:00Z").unwrap().with_timezone(&Utc),
+            updated_at: DateTime::parse_from_rfc3339("2022-01-01T00:00:00Z").unwrap().with_timezone(&Utc),
         };
 
         // Test serialization to JSON
         let json = serde_json::to_string(&user).expect("Failed to serialize user");
-        let expected = r#"{"id":"123e4567-e89b-12d3-a456-426614174000","name":"John Doe","email":"john@example.com","created_at":1640995200,"updated_at":1640995200}"#;
+        let expected = r#"{"id":"123e4567-e89b-12d3-a456-426614174000","name":"John Doe","email":"john@example.com","created_at":"2022-01-01T00:00:00Z","updated_at":"2022-01-01T00:00:00Z"}"#;
         assert_eq!(json, expected);
     }
 
     #[test]
     fn test_user_deserialization() {
-        let json = r#"{"id":"123e4567-e89b-12d3-a456-426614174000","name":"John Doe","email":"john@example.com","created_at":1640995200,"updated_at":1640995200}"#;
+        let json = r#"{"id":"123e4567-e89b-12d3-a456-426614174000","name":"John Doe","email":"john@example.com","created_at":"2022-01-01T00:00:00Z","updated_at":"2022-01-01T00:00:00Z"}"#;
         
         // Test deserialization from JSON
         let user: User = serde_json::from_str(json).expect("Failed to deserialize user");
         
-        assert_eq!(user.id, "123e4567-e89b-12d3-a456-426614174000");
+        assert_eq!(user.id, Uuid::parse_str("123e4567-e89b-12d3-a456-426614174000").unwrap());
         assert_eq!(user.name, "John Doe");
         assert_eq!(user.email, "john@example.com");
-        assert_eq!(user.created_at, 1640995200);
-        assert_eq!(user.updated_at, 1640995200);
+        assert_eq!(user.created_at, DateTime::parse_from_rfc3339("2022-01-01T00:00:00Z").unwrap().with_timezone(&Utc));
+        assert_eq!(user.updated_at, DateTime::parse_from_rfc3339("2022-01-01T00:00:00Z").unwrap().with_timezone(&Utc));
     }
 
     #[test]

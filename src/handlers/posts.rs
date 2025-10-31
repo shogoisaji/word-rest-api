@@ -10,6 +10,7 @@ use axum::{
 use serde::Deserialize;
 use std::sync::Arc;
 use tracing::info;
+use uuid::Uuid;
 
 use crate::{
     db::Database,
@@ -20,7 +21,7 @@ use crate::{
 /// Query parameters for listing posts
 #[derive(Debug, Deserialize)]
 pub struct ListPostsQuery {
-    pub user_id: Option<String>,
+    pub user_id: Option<Uuid>,
 }
 
 /// Create a new post
@@ -43,11 +44,11 @@ pub async fn create_post(
 /// Requirements: 7.1, 7.2, 7.5
 pub async fn get_post_by_id(
     State(db): State<Arc<Database>>,
-    Path(post_id): Path<String>,
+    Path(post_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, ApiError> {
     info!("Fetching post with id: {}", post_id);
     
-    let post = db.get_post_by_id(&post_id).await?;
+    let post = db.get_post_by_id(&post_id.to_string()).await?;
     
     Ok((StatusCode::OK, Json(post)))
 }
@@ -65,7 +66,7 @@ pub async fn get_all_posts(
         info!("Fetching all posts");
     }
     
-    let posts = db.get_all_posts(params.user_id.as_deref()).await?;
+    let posts = db.get_all_posts(params.user_id.as_ref().map(|id| id.to_string()).as_deref()).await?;
     
     if let Some(user_id) = params.user_id {
         info!("Retrieved {} posts for user_id: {}", posts.len(), user_id);
