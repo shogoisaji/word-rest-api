@@ -2,7 +2,8 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use chrono::{DateTime, Utc};
 
-/// User entity representing a registered user in the system
+/// 登録済みユーザーを表すドメインモデル。
+/// `serde::{Serialize, Deserialize}` を derive しているので、そのまま JSON へシリアライズ可能。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct User {
     pub id: Uuid,
@@ -12,14 +13,16 @@ pub struct User {
     pub updated_at: DateTime<Utc>,
 }
 
-/// Request structure for creating a new user
+/// ユーザー作成 API が受け取るペイロード。
+/// `Deserialize` のみ実装し、DB 保存時には `CreateUserRequest::into_user` で `User` に変換する。
 #[derive(Debug, Deserialize)]
 pub struct CreateUserRequest {
     pub name: String,
     pub email: String,
 }
 
-/// Request structure for updating an existing user
+/// ユーザー更新 API の入力。
+/// 更新しないフィールドは `None` を渡すため、`Option<String>` として定義している。
 #[derive(Debug, Deserialize)]
 pub struct UpdateUserRequest {
     pub name: Option<String>,
@@ -27,7 +30,8 @@ pub struct UpdateUserRequest {
 }
 
 impl User {
-    /// Create a new User instance with generated ID and timestamps
+    /// UUID とタイムスタンプを自前で埋めた `User` を生成する。
+    /// `Uuid::new_v4()` はランダム UUID、`Utc::now()` は現在時刻を取得するクロスプラットフォームな手段。
     pub fn new(name: String, email: String) -> Self {
         let now = Utc::now();
         
@@ -40,7 +44,8 @@ impl User {
         }
     }
 
-    /// Update user fields and refresh updated_at timestamp
+    /// 指定フィールドだけを書き換え、`updated_at` は常に最新にする。
+    /// `if let Some` を使うことで、`match` よりも簡潔に Option を扱っている。
     pub fn update(&mut self, name: Option<String>, email: Option<String>) {
         if let Some(new_name) = name {
             self.name = new_name;
@@ -55,7 +60,8 @@ impl User {
 }
 
 impl CreateUserRequest {
-    /// Validate the create user request
+    /// ユーザー作成時のビジネスルール (空欄禁止・文字数上限・メール形式) を検証する。
+    /// 失敗時は `Err(String)` を返し、API 層で `ApiError::Validation` に変換される。
     pub fn validate(&self) -> Result<(), String> {
         // Validate name
         if self.name.trim().is_empty() {
@@ -82,14 +88,16 @@ impl CreateUserRequest {
         Ok(())
     }
 
-    /// Convert to User entity
+    /// 受け取った入力をトリム・小文字化して `User` に変換する。
+    /// フィールドをクリーンアップする責務をこの層に閉じ込めることで、DB 層の複雑さを減らしている。
     pub fn into_user(self) -> User {
         User::new(self.name.trim().to_string(), self.email.trim().to_lowercase())
     }
 }
 
 impl UpdateUserRequest {
-    /// Validate the update user request
+    /// 更新時は少なくともどちらか 1 フィールドが必要、というルールを表現する。
+    /// `Option` の中身が存在するときのみ、`trim` や長さチェックをかけている。
     pub fn validate(&self) -> Result<(), String> {
         // Check if at least one field is provided
         if self.name.is_none() && self.email.is_none() {
@@ -125,18 +133,21 @@ impl UpdateUserRequest {
         Ok(())
     }
 
-    /// Get normalized name (trimmed)
+    /// 名前をトリムし、空なら `None` にするユーティリティ。
+    /// 返り値も `Option<String>` なので、そのまま SQL の動的組み立てに流用できる。
     pub fn get_normalized_name(&self) -> Option<String> {
         self.name.as_ref().map(|n| n.trim().to_string())
     }
 
-    /// Get normalized email (trimmed and lowercase)
+    /// メールアドレスをトリムして小文字化する。
+    /// メールは大小区別しないことが多いため、ここで正規化しておくと照合漏れを防げる。
     pub fn get_normalized_email(&self) -> Option<String> {
         self.email.as_ref().map(|e| e.trim().to_lowercase())
     }
 }
 
-/// Simple email validation function
+/// シンプルなメールフォーマット検証。
+/// 正規表現を使わず、`split('@')` などで最小限のルールをチェックしている。
 fn is_valid_email(email: &str) -> bool {
     // Basic email validation - contains @ and has parts before and after
     let parts: Vec<&str> = email.split('@').collect();

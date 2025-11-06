@@ -1,7 +1,8 @@
 use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
 
-/// Vocabulary entity representing an English word with Japanese translation and examples
+/// 英単語と和訳、および例文を保持する語彙モデル。
+/// `SERIAL` 主キーを使うため、`id` は `i32` 型になっている。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Vocabulary {
     pub id: i32,
@@ -13,7 +14,8 @@ pub struct Vocabulary {
     pub updated_at: DateTime<Utc>,
 }
 
-/// Request structure for creating a new vocabulary entry
+/// 語彙登録エンドポイントの入力。
+/// 例文は任意なので `Option<String>` として宣言している。
 #[derive(Debug, Deserialize)]
 pub struct CreateVocabularyRequest {
     pub en_word: String,
@@ -23,7 +25,8 @@ pub struct CreateVocabularyRequest {
 }
 
 impl CreateVocabularyRequest {
-    /// Validate the create vocabulary request
+    /// 単語・和訳の必須チェックと長さ制限を行う。
+    /// 例文は任意だが、上限 1000 文字を超えた場合はエラーにする。
     pub fn validate(&self) -> Result<(), String> {
         // Validate en_word (required)
         if self.en_word.trim().is_empty() {
@@ -60,17 +63,17 @@ impl CreateVocabularyRequest {
         Ok(())
     }
 
-    /// Get normalized en_word (trimmed)
+    /// 英単語をトリムして返す。
     pub fn get_normalized_en_word(&self) -> String {
         self.en_word.trim().to_string()
     }
 
-    /// Get normalized ja_word (trimmed)
+    /// 和訳をトリムして返す。
     pub fn get_normalized_ja_word(&self) -> String {
         self.ja_word.trim().to_string()
     }
 
-    /// Get normalized en_example (trimmed, None if empty)
+    /// 英文例をトリムし、空文字なら `None` にする。
     pub fn get_normalized_en_example(&self) -> Option<String> {
         self.en_example
             .as_ref()
@@ -78,7 +81,7 @@ impl CreateVocabularyRequest {
             .filter(|e| !e.is_empty())
     }
 
-    /// Get normalized ja_example (trimmed, None if empty)
+    /// 和文例も同様にトリム＋空判定を行う。
     pub fn get_normalized_ja_example(&self) -> Option<String> {
         self.ja_example
             .as_ref()

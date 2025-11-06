@@ -18,6 +18,10 @@ use word_rest_api::{
     middleware::{create_middleware_stack, init_tracing},
 };
 
+/// エントリーポイント。
+/// `#[tokio::main]` によって Tokio ランタイムを自動起動し、非同期関数でも `await`
+/// がそのまま書ける。ここでは設定読込→DB初期化→マイグレーション→ルーター生成→サーバ起動
+/// という一連の初期化処理を直列で記述している。
 #[tokio::main]
 async fn main() {
     // Initialize structured logging
@@ -101,7 +105,9 @@ async fn main() {
     info!("Server shutdown complete");
 }
 
-/// Create the Axum router with all endpoints and middleware
+/// ルーターと共有ステート・ミドルウェアをまとめて生成する。
+/// `Router::new()` に対して `route` をチェーンし、最後に `with_state` で `Arc<Database>`
+/// を渡すことで、各ハンドラが `State<Arc<Database>>` から DB にアクセスできる。
 fn create_router(database: Arc<Database>) -> Router {
     Router::new()
         // Health check endpoint
@@ -127,8 +133,9 @@ fn create_router(database: Arc<Database>) -> Router {
         .layer(create_middleware_stack())
 }
 
-/// Graceful shutdown signal handler
-/// Listens for SIGTERM and SIGINT signals
+/// グレースフルシャットダウンを司るシグナル待ちハンドラ。
+/// Ctrl+C (SIGINT) と SIGTERM を `tokio::select!` で同時待受し、
+/// どちらかが来たらログを出して `axum::serve` 側に通知する。
 async fn shutdown_signal() {
     let ctrl_c = async {
         signal::ctrl_c()

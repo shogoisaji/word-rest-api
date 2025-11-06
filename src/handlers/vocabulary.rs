@@ -16,9 +16,8 @@ use crate::{
     models::vocabulary::CreateVocabularyRequest,
 };
 
-/// Create a new vocabulary entry
-/// POST /api/vocabulary
-/// Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 3.3
+/// `POST /api/vocabulary`
+/// 英単語・和訳・例文を受け取って DB に保存する。`CreateVocabularyRequest` 内で入力検証を行う。
 pub async fn create_vocabulary(
     State(db): State<Arc<Database>>,
     Json(request): Json<CreateVocabularyRequest>,
@@ -31,9 +30,8 @@ pub async fn create_vocabulary(
     Ok((StatusCode::CREATED, Json(vocabulary)))
 }
 
-/// Get vocabulary entry by ID
-/// GET /api/vocabulary/:id
-/// Requirements: 2.2, 2.3, 2.4, 3.3
+/// `GET /api/vocabulary/:id`
+/// `Path<i32>` により、整数変換エラー時は Axum が自動で 400 を返す。
 pub async fn get_vocabulary_by_id(
     State(db): State<Arc<Database>>,
     Path(id): Path<i32>,
@@ -45,9 +43,8 @@ pub async fn get_vocabulary_by_id(
     Ok((StatusCode::OK, Json(vocabulary)))
 }
 
-/// Get all vocabulary entries
-/// GET /api/vocabulary
-/// Requirements: 2.1, 2.3, 3.3
+/// `GET /api/vocabulary`
+/// 全件を配列で返す。`info!` で件数をログに残しておくと、モニタリング時に便利。
 pub async fn get_all_vocabulary(
     State(db): State<Arc<Database>>,
 ) -> Result<impl IntoResponse, ApiError> {
@@ -59,9 +56,8 @@ pub async fn get_all_vocabulary(
     Ok((StatusCode::OK, Json(vocabulary_list)))
 }
 
-/// Get a random vocabulary entry
-/// GET /api/vocabulary/random
-/// Returns a single random vocabulary entry for practice
+/// `GET /api/vocabulary/random`
+/// 単語帳からランダムに 1 件取る。練習問題用のエンドポイント。
 pub async fn get_random_vocabulary(
     State(db): State<Arc<Database>>,
 ) -> Result<impl IntoResponse, ApiError> {

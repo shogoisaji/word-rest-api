@@ -2,7 +2,8 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use chrono::{DateTime, Utc};
 
-/// Post entity representing a content item created by a user
+/// ユーザーが作成した投稿を表すモデル。
+/// 本文は `Option<String>` として NULL も許可している。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Post {
     pub id: Uuid,
@@ -13,7 +14,8 @@ pub struct Post {
     pub updated_at: DateTime<Utc>,
 }
 
-/// Request structure for creating a new post
+/// ポスト作成 API の入力。
+/// `Uuid` 型を直接使うことで、JSON 受信時に自動で形式チェックされる。
 #[derive(Debug, Deserialize)]
 pub struct CreatePostRequest {
     pub user_id: Uuid,
@@ -22,7 +24,8 @@ pub struct CreatePostRequest {
 }
 
 impl Post {
-    /// Create a new Post instance with generated ID and timestamps
+    /// Uuid/Timestamp を生成し、投稿を初期化する。
+    /// `Utc::now()` を 2 回呼ぶ代わりにローカル変数 `now` を共有している点に注目。
     pub fn new(user_id: Uuid, title: String, content: Option<String>) -> Self {
         let now = Utc::now();
         
@@ -36,7 +39,8 @@ impl Post {
         }
     }
 
-    /// Update post fields and refresh updated_at timestamp
+    /// タイトルや本文を Option で受け取り、存在するものだけ更新する。
+    /// 本文は `Option<Option<String>>` で「None に更新したい」ケースにも対応。
     pub fn update(&mut self, title: Option<String>, content: Option<Option<String>>) {
         if let Some(new_title) = title {
             self.title = new_title;
@@ -51,7 +55,8 @@ impl Post {
 }
 
 impl CreatePostRequest {
-    /// Validate the create post request
+    /// タイトル必須・長さ制限、本文の最大長などを検証する。
+    /// `Uuid` の妥当性は serde が先にチェック済みという前提でコメントが添えてある。
     pub fn validate(&self) -> Result<(), String> {
         // Note: user_id is already validated as UUID by serde deserialization
         
@@ -74,7 +79,8 @@ impl CreatePostRequest {
         Ok(())
     }
 
-    /// Convert to Post entity
+    /// 入力を正規化して `Post` に変換する。
+    /// 本文は空文字なら None に落とすことで、DB 上の null と同義にしている。
     pub fn into_post(self) -> Post {
         let normalized_content = self.content
             .map(|c| c.trim().to_string())
@@ -87,12 +93,14 @@ impl CreatePostRequest {
         )
     }
 
-    /// Get normalized title (trimmed)
+    /// タイトルをトリムするだけの補助メソッド。
+    /// `self.title` を直接いじるのではなく、専用関数を用意することで再利用性が上がる。
     pub fn get_normalized_title(&self) -> String {
         self.title.trim().to_string()
     }
 
-    /// Get normalized content (trimmed, None if empty)
+    /// 本文をトリムし、空なら None にする。
+    /// `Option::filter` を使うと「空文字を None にする」処理を 1 行で書ける。
     pub fn get_normalized_content(&self) -> Option<String> {
         self.content
             .as_ref()
@@ -101,7 +109,7 @@ impl CreatePostRequest {
     }
 }
 
-/// Validate UUID string format
+/// UUID 文字列を `Uuid::parse_str` でチェックする小さなヘルパー。
 pub fn is_valid_uuid(uuid_str: &str) -> bool {
     Uuid::parse_str(uuid_str).is_ok()
 }

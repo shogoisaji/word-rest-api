@@ -18,15 +18,15 @@ use crate::{
     models::post::CreatePostRequest,
 };
 
-/// Query parameters for listing posts
+/// `GET /api/posts` のクエリパラメータを表す構造体。
+/// `Option<Uuid>` にすることで、存在しない場合は全件取得と同じ挙動になる。
 #[derive(Debug, Deserialize)]
 pub struct ListPostsQuery {
     pub user_id: Option<Uuid>,
 }
 
-/// Create a new post
-/// POST /api/posts
-/// Requirements: 6.1, 6.2, 6.4, 6.5
+/// `POST /api/posts`
+/// リクエストボディは JSON として受け取り、`CreatePostRequest` のバリデーション結果に従う。
 pub async fn create_post(
     State(db): State<Arc<Database>>,
     Json(request): Json<CreatePostRequest>,
@@ -39,9 +39,8 @@ pub async fn create_post(
     Ok((StatusCode::CREATED, Json(post)))
 }
 
-/// Get post by ID
-/// GET /api/posts/:id
-/// Requirements: 7.1, 7.2, 7.5
+/// `GET /api/posts/:id`
+/// パスパラメータを `Uuid` として受け取り、そのまま DB レイヤーへ委譲する。
 pub async fn get_post_by_id(
     State(db): State<Arc<Database>>,
     Path(post_id): Path<Uuid>,
@@ -53,9 +52,8 @@ pub async fn get_post_by_id(
     Ok((StatusCode::OK, Json(post)))
 }
 
-/// Get all posts, optionally filtered by user_id
-/// GET /api/posts?user_id=<id>
-/// Requirements: 7.1, 7.3, 7.4, 7.5
+/// `GET /api/posts?user_id=<id>`
+/// クエリの有無でログメッセージを変える例。戻り値は常に 200 OK + JSON 配列。
 pub async fn get_all_posts(
     State(db): State<Arc<Database>>,
     Query(params): Query<ListPostsQuery>,

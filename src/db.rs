@@ -8,14 +8,16 @@ use postgres_native_tls::MakeTlsConnector;
 use native_tls::TlsConnector;
 use tracing::{error, info, warn};
 
-/// Database wrapper that manages PostgreSQL connections via connection pool
+/// PostgreSQL への接続プールを握るリポジトリ層。
+/// Deadpool の `Pool` を内部に保持し、各種ドメイン操作をメソッドとして提供する。
 #[derive(Clone)]
 pub struct Database {
     pool: Pool,
 }
 
 impl Database {
-    /// Create a new database connection pool
+    /// 接続プールを構築し、起動時に疎通確認まで実施する。
+    /// `async fn` なので `Database::new(config).await` のように `await` が必要。
     /// 
     /// # Arguments
     /// * `config` - The database configuration
@@ -34,7 +36,8 @@ impl Database {
         Ok(db)
     }
 
-    /// Create a connection pool from database configuration
+    /// Deadpool 用の `Config` を組み立ててプールを生成する内部関数。
+    /// `match` で SSL モードを切り替え、`native_tls` で TLS コネクタを差し込んでいる点に注目。
     async fn create_pool(config: DatabaseConfig) -> Result<Pool, ApiError> {
         let mut pg_config = Config::new();
         
@@ -86,12 +89,14 @@ impl Database {
             })
     }
 
-    /// Get a connection from the pool
+    /// プールから接続を借りる小さなラッパー。
+    /// `deadpool_postgres::Pool::get` が返す `PoolError` を `ApiError` に変換する。
     async fn get_connection(&self) -> Result<Object, ApiError> {
         self.pool.get().await.map_err(ApiError::from)
     }
 
-    /// Perform a health check on the connection pool
+    /// `SELECT 1` を投げて DB が生きているか確認する。
+    /// このようなシンプルなクエリは「ヘルスチェック」用としてよく使われる。
     pub async fn health_check(&self) -> Result<(), ApiError> {
         let client = self.get_connection().await?;
         
@@ -106,7 +111,8 @@ impl Database {
         Ok(())
     }
 
-    /// Run database migrations
+    /// アプリ起動時にテーブル群を CREATE する簡易マイグレーター。
+    /// SQL をリテラル文字列で保持しておき、`client.execute` を順番に呼び出している。
     pub async fn migrate(&self) -> Result<(), ApiError> {
         info!("Running database migrations");
         
@@ -236,7 +242,8 @@ impl Database {
         Ok(())
     }
 
-    /// Test database connection
+    /// `health_check` と似ているが、`Database::new` 直後にプール全体が機能するかの確認に使う。
+    /// 失敗した場合は即座に `ApiError::Database` を返す。
     pub async fn test_connection(&self) -> Result<(), ApiError> {
         let client = self.get_connection().await?;
         
@@ -254,7 +261,9 @@ impl Database {
 
     // User repository operations
 
-    /// Create a new user
+    /// ユーザー作成ロジック。
+    /// `CreateUserRequest::validate` でビジネスルールを検証し、
+    /// `request.into_user()` でドメインモデルに変換してから INSERT している。
     pub async fn create_user(&self, request: CreateUserRequest) -> Result<User, ApiError> {
         // Validate the request
         request.validate().map_err(ApiError::Validation)?;
@@ -287,7 +296,8 @@ impl Database {
         Ok(created_user)
     }
 
-    /// Get user by ID
+    /// UUID 文字列をパースし、単一行を取得する。
+    /// `uuid::Uuid::parse_str` が失敗した場合は `ApiError::Validation` を返すのがポイント。
     pub async fn get_user_by_id(&self, user_id: &str) -> Result<User, ApiError> {
         // Parse the user_id string to UUID
         let uuid = uuid::Uuid::parse_str(user_id)
@@ -315,7 +325,8 @@ impl Database {
         }
     }
 
-    /// Get all users
+    /// 登録日時降順で全ユーザーを取得する。
+    /// `rows.iter().map(|row| ...)` のクロージャ内で `tokio_postgres::Row` から型安全に取り出す。
     pub async fn get_all_users(&self) -> Result<Vec<User>, ApiError> {
         let client = self.get_connection().await?;
         let query = "SELECT id, name, email, created_at, updated_at FROM users ORDER BY created_at DESC";
@@ -337,7 +348,8 @@ impl Database {
         Ok(users)
     }
 
-    /// Update user by ID
+    /// 渡された `UpdateUserRequest` の Option 値に応じて動的に SQL を組み立てる。
+    /// ベクタに `&(dyn ToSql + Sync)` を詰めるのは、Postgres のプレースホルダに順番対応させるため。
     pub async fn update_user(&self, user_id: &str, request: UpdateUserRequest) -> Result<User, ApiError> {
         // Validate the request
         request.validate().map_err(ApiError::Validation)?;
@@ -406,7 +418,8 @@ impl Database {
         }
     }
 
-    /// Delete user by ID (with cascade delete of posts)
+    /// UUID をパースして DELETE を流すだけのシンプルな処理。
+    /// テーブル定義側で `ON DELETE CASCADE` を付けているため、関連ポストも同時に消える。
     pub async fn delete_user(&self, user_id: &str) -> Result<(), ApiError> {
         // Parse the user_id string to UUID
         let uuid = uuid::Uuid::parse_str(user_id)
@@ -430,7 +443,8 @@ impl Database {
     // Post repository operations
     // TODO: Post methods will be updated to use PostgreSQL syntax in task 4.4
 
-    /// Create a new post
+    /// ポスト作成ロジック。
+    /// 本文は `Option<String>` なので、NULL を許容する列への INSERT 例として読める。
     pub async fn create_post(&self, request: CreatePostRequest) -> Result<Post, ApiError> {
         // Validate the request
         request.validate().map_err(ApiError::Validation)?;
@@ -464,7 +478,9 @@ impl Database {
         Ok(created_post)
     }
 
-    /// Get post by ID
+    /// 単一ポストを UUID で検索する。
+    /// `query_opt` を使うことで、存在しない場合に `Ok(None)` を返しつつ
+    /// エラーと区別できる。
     pub async fn get_post_by_id(&self, post_id: &str) -> Result<Post, ApiError> {
         // Parse the post_id string to UUID
         let uuid = uuid::Uuid::parse_str(post_id)
@@ -493,7 +509,8 @@ impl Database {
         }
     }
 
-    /// Get all posts, optionally filtered by user_id
+    /// ユーザー ID で絞り込むかどうかを `Option<&str>` で表現している。
+    /// `if let Some(...)` で分岐し、SQL をそれぞれ書き換えるパターン。
     pub async fn get_all_posts(&self, user_id_filter: Option<&str>) -> Result<Vec<Post>, ApiError> {
         let client = self.get_connection().await?;
         
@@ -540,7 +557,8 @@ impl Database {
         }
     }
 
-    /// Get posts by user ID
+    /// 特定ユーザーの投稿のみを取るショートカット。
+    /// `get_all_posts` のフィルタ版を明示的に公開している。
     pub async fn get_posts_by_user_id(&self, user_id: &str) -> Result<Vec<Post>, ApiError> {
         // Parse the user_id string to UUID
         let uuid = uuid::Uuid::parse_str(user_id)
@@ -569,7 +587,8 @@ impl Database {
 
     // Vocabulary repository operations
 
-    /// Create a new vocabulary entry
+    /// 語彙データの作成。
+    /// 例文フィールドは `Option<String>` なので、`get_normalized_*` で空文字を None に変換している。
     pub async fn create_vocabulary(&self, request: CreateVocabularyRequest) -> Result<Vocabulary, ApiError> {
         // Validate the request
         request.validate().map_err(ApiError::Validation)?;
@@ -609,7 +628,8 @@ impl Database {
         Ok(created_vocabulary)
     }
 
-    /// Get vocabulary entry by ID
+    /// オートインクリメント ID (i32) でレコードを取得する。
+    /// 敢えて UUID ではなく整数を使う例としてわかりやすい。
     pub async fn get_vocabulary_by_id(&self, id: i32) -> Result<Vocabulary, ApiError> {
         let client = self.get_connection().await?;
         let query = "SELECT id, en_word, ja_word, en_example, ja_example, created_at, updated_at FROM vocabulary WHERE id = $1";
@@ -635,7 +655,8 @@ impl Database {
         }
     }
 
-    /// Get all vocabulary entries
+    /// 登録順に語彙を列挙する。
+    /// `Vec<Vocabulary>` を返すので、ハンドラ側はそのまま JSON 配列にできる。
     pub async fn get_all_vocabulary(&self) -> Result<Vec<Vocabulary>, ApiError> {
         let client = self.get_connection().await?;
         let query = "SELECT id, en_word, ja_word, en_example, ja_example, created_at, updated_at FROM vocabulary ORDER BY created_at DESC";
@@ -659,7 +680,8 @@ impl Database {
         Ok(vocabulary_list)
     }
 
-    /// Seed vocabulary data (for development/testing)
+    /// 開発用のシードデータを投入する。
+    /// 既にレコードが存在する場合は何もしないことで、重複挿入を避けている。
     pub async fn seed_vocabulary(&self) -> Result<(), ApiError> {
         info!("Seeding vocabulary data");
         
@@ -706,7 +728,8 @@ impl Database {
         Ok(())
     }
 
-    /// Get a random vocabulary entry
+    /// `ORDER BY RANDOM()` を使って 1 件ランダム取得するサンプル。
+    /// 学習アプリの「出題」機能に応用できる。
     pub async fn get_random_vocabulary(&self) -> Result<Vocabulary, ApiError> {
         let client = self.get_connection().await?;
         let query = "SELECT id, en_word, ja_word, en_example, ja_example, created_at, updated_at FROM vocabulary ORDER BY RANDOM() LIMIT 1";

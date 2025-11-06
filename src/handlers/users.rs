@@ -17,9 +17,9 @@ use crate::{
     models::user::{CreateUserRequest, UpdateUserRequest},
 };
 
-/// Create a new user
-/// POST /api/users
-/// Requirements: 2.1, 2.2, 2.3, 2.4, 2.5
+/// `POST /api/users`
+/// Axum の `State<Arc<Database>>`/`Json<T>` エクストラクタを使った典型的な作成ハンドラ。
+/// `db.create_user` が `Result` を返すため、`?` で早期リターンできる。
 pub async fn create_user(
     State(db): State<Arc<Database>>,
     Json(request): Json<CreateUserRequest>,
@@ -32,9 +32,8 @@ pub async fn create_user(
     Ok((StatusCode::CREATED, Json(user)))
 }
 
-/// Get user by ID
-/// GET /api/users/:id
-/// Requirements: 3.1, 3.2, 3.5
+/// `GET /api/users/:id`
+/// `Path<Uuid>` によって UUID の妥当性チェックを Axum に任せられる例。
 pub async fn get_user_by_id(
     State(db): State<Arc<Database>>,
     Path(user_id): Path<Uuid>,
@@ -46,9 +45,8 @@ pub async fn get_user_by_id(
     Ok((StatusCode::OK, Json(user)))
 }
 
-/// Get all users
-/// GET /api/users
-/// Requirements: 3.1, 3.2, 3.5
+/// `GET /api/users`
+/// 返り値は `Vec<User>` を JSON 化したもの。`info!` で件数をログに残している。
 pub async fn get_all_users(
     State(db): State<Arc<Database>>,
 ) -> Result<impl IntoResponse, ApiError> {
@@ -60,9 +58,8 @@ pub async fn get_all_users(
     Ok((StatusCode::OK, Json(users)))
 }
 
-/// Update user by ID
-/// PUT /api/users/:id
-/// Requirements: 4.1, 4.2, 4.3, 4.4, 4.5
+/// `PUT /api/users/:id`
+/// `Json<UpdateUserRequest>` が Option フィールドを含む点に注目。
 pub async fn update_user(
     State(db): State<Arc<Database>>,
     Path(user_id): Path<Uuid>,
@@ -76,9 +73,8 @@ pub async fn update_user(
     Ok((StatusCode::OK, Json(user)))
 }
 
-/// Delete user by ID
-/// DELETE /api/users/:id
-/// Requirements: 5.1, 5.2, 5.3, 5.4, 5.5
+/// `DELETE /api/users/:id`
+/// 削除成功時は `StatusCode::NO_CONTENT` を返し、HTTP 的な慣習に従ってボディなしで応答する。
 pub async fn delete_user(
     State(db): State<Arc<Database>>,
     Path(user_id): Path<Uuid>,

@@ -7,6 +7,8 @@ use serde_json::json;
 use thiserror::Error;
 use tokio_postgres::error::SqlState;
 
+/// REST API 全体で共通利用するエラー型。
+/// `thiserror::Error` を derive することで `?` 演算子と相性の良い独自エラーを簡潔に書ける。
 #[derive(Error, Debug)]
 pub enum ApiError {
     #[error("Database error: {0}")]
@@ -26,20 +28,28 @@ pub enum ApiError {
 }
 
 impl ApiError {
+    /// バリデーションエラーを簡潔に生成するヘルパー。
+    /// 型パラメータ `impl Into<String>` により、`&str`/`String` どちらも渡せる。
     pub fn validation(message: impl Into<String>) -> Self {
         Self::Validation(message.into())
     }
 
+    /// `NotFound` バリアントを作るユーティリティ。
+    /// `resource` には「User 123」のような文言を入れておくとレスポンスにも反映される。
     pub fn not_found(resource: impl Into<String>) -> Self {
         Self::NotFound(resource.into())
     }
 
+    /// 楽観ロックや一意制約違反を表すエラーを生成する。
+    /// メッセージはそのままクライアントに返る点に注意。
     pub fn conflict(message: impl Into<String>) -> Self {
         Self::Conflict(message.into())
     }
 }
 
 impl IntoResponse for ApiError {
+    /// Axum の `IntoResponse` を実装することで、`Result<_, ApiError>` をそのままハンドラの戻り値にできる。
+    /// ここでは HTTP ステータス・エラーコード・ユーザー向けメッセージを一括で決定している。
     fn into_response(self) -> Response {
         let (status, error_code, message) = match self {
             ApiError::Database(ref err) => {
@@ -116,6 +126,8 @@ impl IntoResponse for ApiError {
 }
 
 // PostgreSQL error mapping
+/// `tokio_postgres::Error` を `ApiError` に読み替える実装。
+/// SQLSTATE に応じて適切なバリアントへマッピングすることで、重複や外部キー違反を分かりやすく返す。
 impl From<tokio_postgres::Error> for ApiError {
     fn from(err: tokio_postgres::Error) -> Self {
         match err.code() {
@@ -173,6 +185,8 @@ impl From<tokio_postgres::Error> for ApiError {
 }
 
 // Connection pool error mapping
+/// Deadpool のプールエラーを REST 用のエラーに変換する。
+/// タイムアウトやプール閉塞など、インフラ寄りの問題を `Database` エラーとして扱う。
 impl From<deadpool_postgres::PoolError> for ApiError {
     fn from(err: deadpool_postgres::PoolError) -> Self {
         match err {

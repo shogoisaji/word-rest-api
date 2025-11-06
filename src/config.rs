@@ -2,6 +2,8 @@ use std::env;
 use std::time::Duration;
 use anyhow::{Context, Result};
 
+/// アプリ全体の設定値をまとめる構造体。
+/// ポート番号・DB設定・環境種別を 1 か所で保持し、`main` から参照する。
 #[derive(Debug, Clone)]
 pub struct Config {
     pub port: u16,
@@ -9,6 +11,9 @@ pub struct Config {
     pub environment: Environment,
 }
 
+/// データベース接続に必要な情報。
+/// Deadpool や `tokio-postgres` が要求する項目を網羅し、接続文字列形式/個別パラメータの
+/// どちらからでも生成できるようにしている。
 #[derive(Debug, Clone)]
 pub struct DatabaseConfig {
     pub host: String,
@@ -22,6 +27,8 @@ pub struct DatabaseConfig {
     pub connection_string: Option<String>, // Support for full connection string format
 }
 
+/// 実行環境 (ローカル or 本番) を表す単純な列挙型。
+/// `match` で分岐させるときに型安全に扱える。
 #[derive(Debug, Clone, PartialEq)]
 pub enum Environment {
     Local,
@@ -29,6 +36,8 @@ pub enum Environment {
 }
 
 impl Config {
+    /// `.env` や環境変数から設定を読み取るイディオム的な関数。
+    /// `anyhow::Context` を使って、数値パース失敗時のエラー文言を挿し込んでいる。
     pub fn from_env() -> Result<Self> {
         // Load .env file if it exists (for local development)
         dotenvy::dotenv().ok();
@@ -55,6 +64,8 @@ impl Config {
         })
     }
 
+    /// 取得済みの値を検証する内部関数。
+    /// ここで弾いておくことで、以降の処理では「必ず有効な値」として扱える。
     fn validate_config(database: &DatabaseConfig, port: u16) -> Result<()> {
         // Validate port range
         if port == 0 {
@@ -69,6 +80,8 @@ impl Config {
 }
 
 impl DatabaseConfig {
+    /// `DATABASE_URL` もしくは個別の `DATABASE_*` 変数から設定を生成する。
+    /// `env::var` を `or_else` で繋いでいるのは、Neon 用の別名を許容するため。
     pub fn from_env() -> Result<Self> {
         // Try to get full connection string first
         if let Ok(connection_string) = env::var("DATABASE_URL") {
@@ -124,6 +137,8 @@ impl DatabaseConfig {
         })
     }
 
+    /// `postgresql://` 形式を手動でパースする補助関数。
+    /// 複雑な URL ライブラリを使わず、`split` を段階的に当てて簡潔に抽出している。
     pub fn from_connection_string(connection_string: &str) -> Result<Self> {
         // Parse PostgreSQL connection string format
         // postgresql://username:password@host:port/database?sslmode=require
@@ -215,6 +230,8 @@ impl DatabaseConfig {
         })
     }
 
+    /// Deadpool に渡す前に値をチェックするためのメソッド。
+    /// ここで `anyhow::bail!` しておけば、以降は `unwrap` を避けつつ安全を保証できる。
     pub fn validate(&self) -> Result<()> {
         // Validate host is not empty
         if self.host.trim().is_empty() {
@@ -259,6 +276,8 @@ impl DatabaseConfig {
         Ok(())
     }
 
+    /// Deadpool の `Config` には接続文字列が便利な場面もあるため、
+    /// 必要に応じて再構築するユーティリティ。
     pub fn to_connection_string(&self) -> String {
         if let Some(ref conn_str) = self.connection_string {
             conn_str.clone()
@@ -272,10 +291,12 @@ impl DatabaseConfig {
 }
 
 impl Environment {
+    /// `matches!` マクロを使ったシンプルな判定。if 文よりも読みやすい。
     pub fn is_production(&self) -> bool {
         matches!(self, Environment::Production)
     }
 
+    /// `is_production` と対になる補助関数。環境ごとに挙動を変えたいときに役立つ。
     pub fn is_local(&self) -> bool {
         matches!(self, Environment::Local)
     }

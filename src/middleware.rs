@@ -9,7 +9,8 @@ use tower_http::{
 use tracing::Level;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
-/// Creates the complete middleware stack for the application
+/// アプリ全体で使う Tower ミドルウェアを積み上げて返す。
+/// `ServiceBuilder` を返すことで `Router::layer` にそのまま差し込める。
 pub fn create_middleware_stack() -> ServiceBuilder<
     tower::layer::util::Stack<
         TimeoutLayer,
@@ -41,7 +42,8 @@ pub fn create_middleware_stack() -> ServiceBuilder<
         .layer(TimeoutLayer::new(Duration::from_secs(30)))
 }
 
-/// Creates CORS layer configuration
+/// CORS を緩めに許可するレイヤー。
+/// `CorsLayer::new()` からビルダー的に `allow_origin` などをチェーンして設定する。
 fn create_cors_layer() -> CorsLayer {
     CorsLayer::new()
         .allow_origin(Any)
@@ -56,7 +58,8 @@ fn create_cors_layer() -> CorsLayer {
         .allow_credentials(false)
 }
 
-/// Initialize structured logging with JSON format and correlation IDs
+/// Tracing サブスクライバを JSON ログ出力に設定する。
+/// `EnvFilter` により `RUST_LOG=debug` のような環境変数制御も可能。
 pub fn init_tracing() -> Result<(), Box<dyn std::error::Error>> {
     // Create environment filter for log levels
     let env_filter = EnvFilter::try_from_default_env()
